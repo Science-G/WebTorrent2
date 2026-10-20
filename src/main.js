@@ -1046,6 +1046,13 @@ async function smokeSounds () {
       if (Object.hasOwn(SOUND_VOLUMES, name)) window.__smokeSoundEvents.push(name)
       return original.apply(this, args)
     }
+    window.__smokeWaitForSounds = async count => {
+      const started = Date.now()
+      while (window.__smokeSoundEvents.length < count) {
+        if (Date.now() - started > 5000) throw new Error('sound event delivery timed out')
+        await new Promise(resolve => setTimeout(resolve, 20))
+      }
+    }
     await window.api.soundsReady()
     if (window.__smokeSoundEvents.length) throw new Error('startup sound repeated')
     button.click()
@@ -1171,6 +1178,7 @@ async function smokeSoundActions (entry, torrentFile, dir) {
     await window.api.resume(${entry.id})
     await window.api.resume(${entry.id})
     await window.api.remove(${entry.id}, false)
+    await window.__smokeWaitForSounds(3)
     return window.__smokeSoundEvents.slice()
   })()`)
   if (JSON.stringify(events) !== JSON.stringify(['disable', 'enable', 'delete'])) {
@@ -1178,7 +1186,10 @@ async function smokeSoundActions (entry, torrentFile, dir) {
   }
   const added = await addTorrent(torrentFile, { path: dir })
   if (!added.torrent.done) await new Promise(resolve => added.torrent.once('done', resolve))
-  const afterAdd = await mainWindow.webContents.executeJavaScript('window.__smokeSoundEvents.slice()')
+  const afterAdd = await mainWindow.webContents.executeJavaScript(`(async () => {
+    await window.__smokeWaitForSounds(4)
+    return window.__smokeSoundEvents.slice()
+  })()`)
   if (JSON.stringify(afterAdd) !== JSON.stringify(['disable', 'enable', 'delete', 'add'])) {
     throw new Error(`adding existing files replayed completion: ${JSON.stringify(afterAdd)}`)
   }
