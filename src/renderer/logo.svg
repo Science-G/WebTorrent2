@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="96 96 832 832">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2433"/>
+      <stop offset="1" stop-color="#0b0e13"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.56" r="0.5">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="link" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="0.5" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#60a5fa"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+
+  <g>
+    <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#body)"/>
+  </g>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#glow)"/>
+  <rect x="102" y="102" width="820" height="820" rx="184" fill="none" stroke="url(#rim)" stroke-width="4"/>
+
+  <!-- The W: five connected peers. The one in the middle is you. -->
+  <polyline points="262,350 387,684 512,470 637,684 762,350" fill="none"
+            stroke="url(#link)" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <circle cx="512" cy="470" r="70" fill="#ffffff" opacity="0.55" filter="url(#soft)"/>
+
+  <g fill="#0b0e13" stroke-width="30">
+    <circle cx="262" cy="350" r="52" stroke="#5eead4"/>
+    <circle cx="387" cy="684" r="52" stroke="#2dd4bf"/>
+    <circle cx="637" cy="684" r="52" stroke="#3fb9e0"/>
+    <circle cx="762" cy="350" r="52" stroke="#60a5fa"/>
+  </g>
+  <circle cx="512" cy="470" r="64" fill="#ffffff"/>
+</svg>

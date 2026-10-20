@@ -1,0 +1,118 @@
+{
+  "name": "webtorrent2",
+  "productName": "WebTorrent 2",
+  "version": "0.2.0",
+  "description": "WebTorrent2: the WebTorrent desktop experience on macOS, refreshed. Download and seed without opening router ports, thanks to WebRTC.",
+  "license": "MIT",
+  "author": "WebTorrent2 contributors",
+  "private": true,
+  "type": "module",
+  "main": "src/main.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac dir --arm64",
+    "build:intel": "electron-builder --mac dir --x64",
+    "test": "node test/security.mjs && node test/core.mjs && node test/ui.mjs"
+  },
+  "overrides": {
+    "ip": "1.1.9"
+  },
+  "dependencies": {
+    "parse-torrent": "^11.0.24",
+    "webtorrent": "^3.0.21"
+  },
+  "devDependencies": {
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3",
+    "jsdom": "^26.1.0"
+  },
+  "build": {
+    "appId": "local.webtorrent2",
+    "productName": "WebTorrent 2",
+    "artifactName": "WebTorrent2-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!**/node_modules/**/*.{map,d.ts,d.cts,d.mts}",
+      "!**/node_modules/**/{README,CHANGELOG,HISTORY}*",
+      "!**/node_modules/**/prebuilds/{android,ios,linux,win32}-*{,/**}",
+      "!**/node_modules/webtorrent/dist{,/**}",
+      "!**/node_modules/node-datachannel/{src,API.md,BULDING.md,CMakeLists.txt}{,/**}"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/node-datachannel/**",
+      "**/node_modules/utp-native/**"
+    ],
+    "npmRebuild": false,
+    "electronLanguages": [
+      "en",
+      "fr"
+    ],
+    "compression": "maximum",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true,
+      "enableCookieEncryption": true
+    },
+    "afterSign": "./scripts/after-sign.cjs",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "LSFileQuarantineEnabled": true
+      }
+    },
+    "dmg": {
+      "title": "WebTorrent 2",
+      "contents": [
+        {
+          "x": 140,
+          "y": 200,
+          "type": "file"
+        },
+        {
+          "x": 400,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "fileAssociations": [
+      {
+        "ext": "torrent",
+        "name": "BitTorrent File",
+        "description": "BitTorrent File",
+        "mimeType": "application/x-bittorrent",
+        "role": "Viewer"
+      }
+    ]
+  }
+}

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' webtorrent2:; media-src webtorrent2:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+    <title>WebTorrent 2</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="titlebar">
+      <div class="brand">
+        <img class="logo" src="logo.svg" alt="" aria-hidden="true">
+        <div class="brand-text">
+          <h1>WebTorrent 2</h1>
+          <p id="download-path" class="subtitle">Loading…</p>
+        </div>
+      </div>
+
+      <div class="global-stats">
+        <span id="stat-down" class="stat">↓ 0 B/s</span>
+        <span id="stat-up" class="stat">↑ 0 B/s</span>
+        <span id="stat-count" class="stat">0 torrents</span>
+      </div>
+
+      <div class="toolbar">
+        <button id="add-file" class="primary">Add Torrent</button>
+        <button id="choose-folder" class="ghost" title="Change the download folder">Folder</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="add-bar">
+        <input
+          id="magnet-input"
+          type="text"
+          placeholder="magnet:?xt=… or info hash"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <button id="paste-btn" class="ghost">Paste</button>
+        <button id="add-magnet" class="primary">Add</button>
+      </section>
+
+      <div class="list-header">
+        <span id="list-count">No torrents</span>
+        <button id="open-folder" class="link">Open folder</button>
+      </div>
+
+      <ul id="torrent-list" class="torrent-list"></ul>
+
+      <div id="empty-state" class="empty">
+        <p>Nothing here yet.</p>
+        <p class="muted">Drop a .torrent file anywhere in this window, paste a magnet link, or double-click a .torrent in Finder.</p>
+      </div>
+    </main>
+
+    <div id="modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <h2 id="modal-title">Remove torrent</h2>
+        <p id="modal-name" class="modal-name"></p>
+        <p class="muted">You can keep the files already downloaded or delete them from disk.</p>
+        <div class="modal-actions">
+          <button id="modal-cancel" class="ghost">Cancel</button>
+          <button id="modal-keep" class="ghost">Remove</button>
+          <button id="modal-delete" class="danger">Remove and Delete Files</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="drop-overlay" class="drop-overlay" hidden>
+      <div class="drop-card">
+        <img src="logo.svg" alt="" aria-hidden="true">
+        <strong>Drop to add</strong>
+        <span>.torrent files or magnet links</span>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

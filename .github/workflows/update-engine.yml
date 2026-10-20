@@ -1,0 +1,119 @@
+name: update-engine
+
+# Every day, looks for a new release of the webtorrent engine on npm. When one is
+# out (same major version, published at least 3 days ago), it updates the
+# dependency, verifies npm signatures and provenance, runs the tests, builds the
+# app, really launches it on a Mac, and only then commits, tags and publishes a
+# release. If anything fails, nothing is published and an issue is opened.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-engine
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      update: ${{ steps.check.outputs.update }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Look for a new engine release
+        id: check
+        run: node scripts/check-engine-update.mjs | tee -a "$GITHUB_OUTPUT"
+
+  release:
+    needs: check
+    if: needs.check.outputs.update == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      issues: write
+    env:
+      ENGINE: ${{ needs.check.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Update the engine
+        run: npm install --no-audit --no-fund "webtorrent@^$ENGINE"
+
+      - name: Verify npm signatures and provenance
+        run: npm audit signatures
+
+      - name: Security tests
+        run: node test/security.mjs
+
+      - name: Engine tests
+        run: node test/core.mjs
+
+      - name: Interface tests
+        run: node test/ui.mjs
+
+      - name: Bump the app version
+        run: npm version patch --no-git-tag-version
+
+      - name: Generate the icons
+        run: |
+          python3 scripts/make-tray-icon.py
+          python3 scripts/make-app-icon.py
+
+      - name: Build, sign and check the app
+        run: npx electron-builder --mac dmg zip --arm64 --publish never
+
+      - name: SHA-256 checksums
+        run: |
+          cd dist
+          shasum -a 256 *.dmg *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Commit, tag and publish the release
+        run: |
+          APP_VERSION="$(node -p "require('./package.json').version")"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore: update the webtorrent engine to $ENGINE"
+          git tag "v$APP_VERSION"
+          git push origin HEAD:main "v$APP_VERSION"
+          gh release create "v$APP_VERSION" dist/*.dmg dist/*.zip dist/SHA256SUMS.txt \
+            --title "WebTorrent2 v$APP_VERSION" \
+            --notes "Engine update: webtorrent $ENGINE ([upstream changes](https://github.com/webtorrent/webtorrent/releases/tag/v$ENGINE)).
+
+          Verified before release: npm signatures and provenance, security, engine and interface tests, signed app launched on a Mac (window, WebRTC, video preview).
+
+          Install: drag **WebTorrent 2** into Applications. Not notarized by Apple: on macOS 15 and later, **System Settings > Privacy & Security > Open Anyway**."
+
+      - name: Report a failed update
+        if: failure()
+        run: |
+          TITLE="Engine update to webtorrent $ENGINE failed"
+          if [ -z "$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[].number')" ]; then
+            gh issue create --title "$TITLE" \
+              --body "The automatic update stopped before publishing anything. Run log: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi
