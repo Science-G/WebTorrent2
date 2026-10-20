@@ -100,13 +100,22 @@ before anything is published. The full audit is in [SECURITY_AUDIT.md](SECURITY_
 
 ## Build from source
 
-Requires Node 22 or later.
+You need a Mac with Apple Silicon and macOS 13 or later, Node 22 or later, and the
+Xcode Command Line Tools for Python 3 and `codesign` (`xcode-select --install`).
 
 ```bash
-npm install
-npm start
-npm test
+git clone https://github.com/Science-G/WebTorrent2.git
+cd WebTorrent2
+npm ci                                  # exact dependency versions from the lockfile
+python3 scripts/make-tray-icon.py       # menu bar icons
+python3 scripts/make-app-icon.py        # app icon
+npm test                                # security, engine and interface tests
+npm start                               # run the app without packaging it
+npx electron-builder --mac dmg --arm64  # build the DMG into dist/
 ```
+
+The last command signs the app locally, launches it once to check that it works,
+then writes the DMG to `dist/`. It is the same build the releases come from.
 
 ---
 
