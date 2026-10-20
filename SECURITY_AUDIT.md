@@ -1,6 +1,6 @@
 # Security audit
 
-Audited version: WebTorrent2 0.2.0, October 19, 2026.
+Audited version: WebTorrent2 0.2.1, October 20, 2026.
 Scope: main process, interface page, the `webtorrent` 3.0.21 engine and its
 configuration, media previews and the VLC stream, the shipped macOS package, the
 build chain.
@@ -98,7 +98,8 @@ access control. WebTorrent2 uses a private protocol instead (`webtorrent2://`):
   video or image, and `poster/<info hash>`; anything else returns 404, there is no
   path in the URL to traverse;
 - the page's content security policy only allows media and images from `'self'`
-  and this protocol.
+  and this protocol. Bundled sound effects load from the app itself; remote audio
+  sources remain blocked.
 
 Untrusted video and images are decoded by Chromium inside the sandboxed renderer,
 the same exposure as a browser playing a video. The poster sent back to the main
@@ -131,6 +132,20 @@ name cannot inject a command.
 | Binary | Electron fuses: `RunAsNode`, `NODE_OPTIONS` and `--inspect` off, app loaded from the asar only |
 | Signature | full ad hoc signature of the bundle, checked with `codesign --verify --deep --strict` at build time |
 | Build | the app is really launched after signing (`scripts/after-sign.cjs`): page, bridge, styles, logo, WebRTC, engine, and a poster built from a test video must all work, or no DMG is produced |
+
+## Sound effects (new in 0.2.1)
+
+The eight WAV files are bundled locally, with WebTorrent Desktop's original MIT
+license. Sound names are restricted to a fixed list before any file is loaded.
+The saved preference is passed through the same trusted-page IPC checks as other
+settings, and the setting only accepts a boolean. The renderer remains sandboxed
+with no Node integration.
+
+The check launch also plays and decodes all eight assets, verifies that the mute
+setting is saved and restored, and checks the action sounds on a real torrent.
+Verifying files already on disk, generating a poster and reopening the window
+must stay silent. Interface tests cover volume levels, stopping sounds on mute,
+restoring the saved preference and rejecting unknown sound names.
 
 ## Checked and found sound
 

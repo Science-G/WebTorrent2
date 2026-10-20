@@ -86,6 +86,20 @@ link can fail, and the app uses no relay server.
    On macOS 15 and later, go to **System Settings > Privacy & Security > Open
    Anyway**. On macOS 13 and 14, right-click the app and choose **Open**.
 
+If macOS still blocks the app, run this in Terminal after copying it to Applications:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/WebTorrent 2.app"
+```
+
+Browsers mark downloaded apps with the `com.apple.quarantine` attribute, which
+triggers macOS Gatekeeper checks. WebTorrent2 has an ad hoc signature but no Apple
+notarization, so those checks can prevent it from opening. This command removes
+that quarantine attribute from this app and its bundled files (`-d` deletes the
+named attribute, `-r` applies it recursively). It does not notarize the app or
+repair a corrupted download. Use it for the release downloaded from this
+repository after checking its SHA-256 fingerprint.
+
 Play in VLC needs [VLC](https://www.videolan.org/vlc/). New releases follow the
 webtorrent engine on their own: once an engine update is three days old, it is
 installed, tested and launched on a Mac before a new version is published here.

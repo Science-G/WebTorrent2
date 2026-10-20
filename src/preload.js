@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('api', {
   savePoster: (id, bytes) => ipcRenderer.invoke('posters:save', id, bytes),
   posterFailed: (id) => ipcRenderer.invoke('posters:failed', id),
   settings: () => ipcRenderer.invoke('settings:get'),
+  setSounds: (enabled) => ipcRenderer.invoke('settings:set-sounds', enabled),
+  soundsReady: () => ipcRenderer.invoke('sounds:ready'),
   chooseDownload: () => ipcRenderer.invoke('settings:choose-download'),
   openFolder: () => ipcRenderer.invoke('settings:open-folder'),
   readClipboard: () => ipcRenderer.invoke('clipboard:read'),
@@ -36,5 +38,10 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (_event, message) => callback(message)
     ipcRenderer.on('app:error', handler)
     return () => ipcRenderer.removeListener('app:error', handler)
+  },
+  onSound: (callback) => {
+    const handler = (_event, name) => callback(name)
+    ipcRenderer.on('sounds:play', handler)
+    return () => ipcRenderer.removeListener('sounds:play', handler)
   }
 })

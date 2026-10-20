@@ -52,6 +52,9 @@ let isQuitting = false
 let updateTimer = null
 let streamServer = null
 let engineStopped = false
+let soundsReady = false
+let startupSoundSent = false
+const pendingSounds = []
 
 let configFile = null
 let sessionFile = null
@@ -196,7 +199,8 @@ function initPaths () {
 function loadConfig () {
   const fallback = {
     version: 1,
-    downloadPath: app.getPath('downloads')
+    downloadPath: app.getPath('downloads'),
+    soundNotifications: true
   }
 
   try {
@@ -208,6 +212,7 @@ function loadConfig () {
   if (!config.downloadPath || isUnsafeDownloadDir(config.downloadPath, os.homedir())) {
     config.downloadPath = fallback.downloadPath
   }
+  config.soundNotifications = config.soundNotifications !== false
 
   try {
     fs.mkdirSync(config.downloadPath, { recursive: true })
@@ -243,18 +248,20 @@ function createWindow () {
     show: false,
     backgroundColor: '#0f1115',
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
-    trafficLightPosition: isMac ? { x: 16, y: 20 } : undefined,
+    trafficLightPosition: isMac ? { x: 16, y: 12 } : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      spellcheck: false
+      spellcheck: false,
+      autoplayPolicy: 'no-user-gesture-required'
     }
   })
 
   mainWindow.loadFile(RENDERER_PATH)
   mainWindow.once('ready-to-show', () => mainWindow.show())
+  mainWindow.webContents.on('did-start-loading', () => { soundsReady = false })
 
   // If the page fails to load, show the window anyway and log why:
   // otherwise the app looks like it does nothing at all.
@@ -425,7 +432,9 @@ function registerIpc () {
   handle('torrents:pause', (_event, id) => {
     const entry = entries.get(Number(id))
     if (!entry) return { ok: false }
+    const changed = !entry.torrent.paused
     entry.torrent.pause()
+    if (changed) notifySound('disable')
     saveSession()
     pushUpdate()
     return { ok: true }
@@ -434,15 +443,18 @@ function registerIpc () {
   handle('torrents:resume', (_event, id) => {
     const entry = entries.get(Number(id))
     if (!entry) return { ok: false }
+    const changed = entry.torrent.paused
     entry.torrent.resume()
+    if (changed) notifySound('enable')
     saveSession()
     pushUpdate()
     return { ok: true }
   })
 
   handle('torrents:remove', async (_event, id, deleteFiles) => {
-    await removeEntry(Number(id), Boolean(deleteFiles))
-    return { ok: true }
+    const removed = await removeEntry(Number(id), Boolean(deleteFiles))
+    if (removed) notifySound('delete')
+    return { ok: Boolean(removed) }
   })
 
   handle('torrents:reveal', (_event, id) => {
@@ -478,7 +490,11 @@ function registerIpc () {
     return error ? { ok: false, error } : { ok: true }
   })
 
-  handle('torrents:play', async (_event, id) => playInVlc(entries.get(Number(id))))
+  handle('torrents:play', async (_event, id) => {
+    const result = await playInVlc(entries.get(Number(id)))
+    if (result.ok) notifySound('play')
+    return result
+  })
 
   handle('posters:save', async (_event, id, bytes) => {
     const entry = entries.get(Number(id))
@@ -498,8 +514,26 @@ function registerIpc () {
 
   handle('settings:get', () => ({
     downloadPath: config.downloadPath,
+    soundNotifications: config.soundNotifications,
     version: app.getVersion()
   }))
+
+  handle('settings:set-sounds', (_event, enabled) => {
+    if (typeof enabled !== 'boolean') throw new Error('Invalid sound preference.')
+    config.soundNotifications = enabled
+    if (!enabled) pendingSounds.length = 0
+    saveConfig()
+    return { soundNotifications: config.soundNotifications }
+  })
+
+  handle('sounds:ready', () => {
+    soundsReady = true
+    if (!startupSoundSent) {
+      startupSoundSent = true
+      notifySound('startup')
+    }
+    for (const name of pendingSounds.splice(0)) notifySound(name)
+  })
 
   handle('settings:choose-download', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -626,7 +660,14 @@ async function addTorrent (source, options = {}) {
     pushUpdate()
   })
 
+  let completionSoundSent = false
   torrent.on('done', () => {
+    // WebTorrent also emits 'done' after verifying files already on disk. Only
+    // data received from peers or web seeds counts as a new download here.
+    if (!completionSoundSent && torrent.received > 0) {
+      completionSoundSent = true
+      notifySound('done')
+    }
     saveSession()
     pushUpdate()
   })
@@ -634,6 +675,7 @@ async function addTorrent (source, options = {}) {
   torrent.on('error', (err) => {
     console.error('torrent error', err)
     entry.error = String(err?.message || err)
+    notifySound('error')
     pushUpdate()
   })
 
@@ -645,6 +687,7 @@ async function addTorrent (source, options = {}) {
 
   saveSession()
   pushUpdate()
+  if (!options.restoring && !torrent.destroyed) notifySound('add')
   return entry
 }
 
@@ -743,7 +786,8 @@ async function restoreSession () {
     try {
       await addTorrent(source, {
         paused: Boolean(item.paused),
-        path: item.path || config.downloadPath
+        path: item.path || config.downloadPath,
+        restoring: true
       })
     } catch (err) {
       console.error('restore failed', source, err)
@@ -777,6 +821,7 @@ async function removeEntry (id, deleteFiles) {
 
   saveSession()
   pushUpdate()
+  return true
 }
 
 // WebTorrent gives paths relative to the torrent's download folder.
@@ -882,6 +927,15 @@ function pushUpdate () {
   mainWindow.webContents.send('torrents:update', listTorrents())
 }
 
+function notifySound (name) {
+  if (!config?.soundNotifications || isQuitting || !mainWindow || mainWindow.isDestroyed()) return
+  if (!soundsReady) {
+    if (pendingSounds.length < 16) pendingSounds.push(name)
+    return
+  }
+  mainWindow.webContents.send('sounds:play', name)
+}
+
 function reportError (err) {
   const message = String(err?.message || err || 'Unknown error')
   console.error(message)
@@ -960,18 +1014,67 @@ function runSmokeTest () {
       if (!WEBRTC_SUPPORT) return fail('WebRTC unavailable')
       if (!client || client.destroyed) return fail('engine stopped')
 
+      const soundAssets = await smokeSounds()
+
       // Full poster path on a real video: protocol, range requests, frame
       // capture in the window, IPC, file on disk.
       let poster = 'skipped'
       if (smokeVideo) poster = await smokePoster(smokeVideo)
 
       clearTimeout(timer)
-      console.log(`SMOKE OK webrtc=${WEBRTC_SUPPORT} poster=${poster} electron=${process.versions.electron}`)
+      console.log(`SMOKE OK webrtc=${WEBRTC_SUPPORT} poster=${poster} sounds=${soundAssets} electron=${process.versions.electron}`)
       finish(0)
     } catch (err) {
       fail(String(err?.message || err))
     }
   })
+}
+
+async function smokeSounds () {
+  const count = await mainWindow.webContents.executeJavaScript(`(async () => {
+    const button = document.getElementById('toggle-sounds')
+    const waitForSetting = async () => {
+      const started = Date.now()
+      while (button.disabled) {
+        if (Date.now() - started > 5000) throw new Error('sound setting timed out')
+        await new Promise(resolve => setTimeout(resolve, 20))
+      }
+    }
+    await waitForSetting()
+    const names = ['startup', 'add', 'delete', 'disable', 'enable', 'done', 'error', 'play']
+    for (const name of names) {
+      const audio = new Audio(new URL('sounds/' + name + '.wav', document.baseURI).href)
+      audio.volume = SOUND_VOLUMES[name]
+      await audio.play()
+      if (!(audio.duration > 0)) throw new Error('sound not decoded: ' + name)
+      audio.pause()
+    }
+    window.__smokeSoundEvents = []
+    const original = HTMLMediaElement.prototype.play
+    HTMLMediaElement.prototype.play = function (...args) {
+      const name = this.src.split('/').at(-1)?.replace('.wav', '')
+      if (Object.hasOwn(SOUND_VOLUMES, name)) window.__smokeSoundEvents.push(name)
+      return original.apply(this, args)
+    }
+    await window.api.soundsReady()
+    if (window.__smokeSoundEvents.length) throw new Error('startup sound repeated')
+    button.click()
+    await waitForSetting()
+    if ((await window.api.settings()).soundNotifications !== false) throw new Error('mute IPC failed')
+    return names.length
+  })()`)
+  if (JSON.parse(fs.readFileSync(configFile, 'utf8')).soundNotifications !== false) {
+    throw new Error('mute not saved to disk')
+  }
+  loadConfig()
+  if (config.soundNotifications !== false) throw new Error('saved mute not restored')
+  await mainWindow.webContents.executeJavaScript(`(async () => {
+    const button = document.getElementById('toggle-sounds')
+    button.click()
+    while (button.disabled) await new Promise(resolve => setTimeout(resolve, 20))
+    if ((await window.api.settings()).soundNotifications !== true) throw new Error('unmute IPC failed')
+  })()`)
+  return count
 }
 
 async function smokePoster (videoPath) {
@@ -983,17 +1086,42 @@ async function smokePoster (videoPath) {
   const torrentFile = Buffer.from(seeded.torrentFile)
   await new Promise((resolve) => client.remove(seeded, { destroyStore: false }, resolve))
 
-  const entry = await addTorrent(torrentFile, { path: dir })
+  const entry = await addTorrent(torrentFile, { path: dir, restoring: true })
   if (!entry) throw new Error('smoke torrent not added')
 
   const started = Date.now()
   while (Date.now() - started < 60000) {
     if (entry.posterVersion > 0) {
       const size = fs.statSync(posterFile(entry.torrent.infoHash)).size
+      await smokeSoundActions(entry, torrentFile, dir)
       return `${size}B`
     }
     if (entry.posterFailed) throw new Error('poster capture failed in the window')
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
   throw new Error('poster not captured within 60 s')
+}
+
+async function smokeSoundActions (entry, torrentFile, dir) {
+  // Restoring verified files and generating their poster must stay silent.
+  mainWindow.hide()
+  showWindow()
+  const events = await mainWindow.webContents.executeJavaScript(`(async () => {
+    if (window.__smokeSoundEvents.length) throw new Error('restored torrent or preview played a sound')
+    await window.api.pause(${entry.id})
+    await window.api.pause(${entry.id})
+    await window.api.resume(${entry.id})
+    await window.api.resume(${entry.id})
+    await window.api.remove(${entry.id}, false)
+    return window.__smokeSoundEvents.slice()
+  })()`)
+  if (JSON.stringify(events) !== JSON.stringify(['disable', 'enable', 'delete'])) {
+    throw new Error(`wrong action sounds: ${JSON.stringify(events)}`)
+  }
+  const added = await addTorrent(torrentFile, { path: dir })
+  if (!added.torrent.done) await new Promise(resolve => added.torrent.once('done', resolve))
+  const afterAdd = await mainWindow.webContents.executeJavaScript('window.__smokeSoundEvents.slice()')
+  if (JSON.stringify(afterAdd) !== JSON.stringify(['disable', 'enable', 'delete', 'add'])) {
+    throw new Error(`adding existing files replayed completion: ${JSON.stringify(afterAdd)}`)
+  }
 }

@@ -7,10 +7,7 @@ const els = {
   statCount: document.getElementById('stat-count'),
   addFile: document.getElementById('add-file'),
   chooseFolder: document.getElementById('choose-folder'),
-  openFolder: document.getElementById('open-folder'),
-  magnet: document.getElementById('magnet-input'),
-  paste: document.getElementById('paste-btn'),
-  addMagnet: document.getElementById('add-magnet'),
+  toggleSounds: document.getElementById('toggle-sounds'),
   dropOverlay: document.getElementById('drop-overlay'),
   listCount: document.getElementById('list-count'),
   list: document.getElementById('torrent-list'),
@@ -27,6 +24,19 @@ let torrents = []
 let removeTarget = null
 let toastTimer = null
 let dragTimer = null
+let soundsEnabled = false
+const soundCache = new Map()
+// WebTorrent Desktop's original levels, including its quieter toggle/delete cues.
+const SOUND_VOLUMES = Object.freeze({
+  startup: 0.25,
+  add: 0.25,
+  delete: 0.125,
+  disable: 0.125,
+  enable: 0.125,
+  done: 0.25,
+  error: 0.25,
+  play: 0.25
+})
 
 // One persistent <li> per torrent: only its text is redrawn every second, so the
 // poster in the background and a running hover preview never flicker.
@@ -45,6 +55,7 @@ async function init () {
   })
 
   bridge.onError((message) => toast(message, true))
+  bridge.onSound(playSound)
 
   bridge.onFocus((id) => {
     render()
@@ -60,6 +71,9 @@ async function init () {
     const settings = await bridge.settings()
     els.downloadPath.textContent = settings.downloadPath
     els.downloadPath.title = settings.downloadPath
+    setSoundPreference(settings.soundNotifications !== false)
+    els.toggleSounds.disabled = false
+    await bridge.soundsReady()
   } catch {}
 
   try {
@@ -72,13 +86,8 @@ async function init () {
 function bind () {
   els.addFile.addEventListener('click', addFiles)
   els.chooseFolder.addEventListener('click', chooseFolder)
-  els.openFolder.addEventListener('click', openFolder)
-  els.addMagnet.addEventListener('click', submitMagnet)
-  els.paste.addEventListener('click', pasteFromClipboard)
-
-  els.magnet.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') submitMagnet()
-  })
+  els.toggleSounds.addEventListener('click', toggleSounds)
+  document.addEventListener('paste', pasteTorrent)
 
   els.list.addEventListener('click', onListClick)
 
@@ -120,6 +129,45 @@ function bind () {
   })
 }
 
+function setSoundPreference (enabled) {
+  soundsEnabled = enabled
+  els.toggleSounds.setAttribute('aria-pressed', String(enabled))
+  els.toggleSounds.title = enabled ? 'Turn sound effects off' : 'Turn sound effects on'
+  if (!enabled) {
+    for (const audio of soundCache.values()) {
+      audio.pause()
+      audio.currentTime = 0
+    }
+  }
+}
+
+async function toggleSounds () {
+  const previous = soundsEnabled
+  setSoundPreference(!previous)
+  els.toggleSounds.disabled = true
+  try {
+    const settings = await bridge.setSounds(soundsEnabled)
+    setSoundPreference(settings.soundNotifications)
+  } catch (err) {
+    setSoundPreference(previous)
+    toast(String(err?.message || err), true)
+  } finally {
+    els.toggleSounds.disabled = false
+  }
+}
+
+function playSound (name) {
+  if (!soundsEnabled || !Object.hasOwn(SOUND_VOLUMES, name)) return
+  let audio = soundCache.get(name)
+  if (!audio) {
+    audio = new Audio(new URL(`sounds/${name}.wav`, document.baseURI).href)
+    audio.volume = SOUND_VOLUMES[name]
+    soundCache.set(name, audio)
+  }
+  audio.currentTime = 0
+  audio.play().catch((err) => console.warn('Sound playback failed:', name, err?.message || err))
+}
+
 async function addFiles () {
   try {
     const result = await bridge.pickFiles()
@@ -144,37 +192,15 @@ async function chooseFolder () {
   }
 }
 
-async function openFolder () {
-  try {
-    const result = await bridge.openFolder()
-    if (result && result.ok === false) toast(result.error || 'Could not open the folder.', true)
-  } catch (err) {
-    toast(String(err?.message || err), true)
-  }
-}
-
-async function pasteFromClipboard () {
-  try {
-    const text = String(await bridge.readClipboard()).trim()
-    if (!text) {
-      toast('The clipboard is empty.')
-      return
-    }
-    els.magnet.value = text
-    els.magnet.focus()
-  } catch (err) {
-    toast(String(err?.message || err), true)
-  }
-}
-
-async function submitMagnet () {
-  const value = els.magnet.value.trim()
-  if (!value) return
+async function pasteTorrent (event) {
+  if (!els.modal.hidden || event.target.closest?.('input, textarea, [contenteditable]')) return
+  const value = String(event.clipboardData?.getData('text/plain') || '').trim()
+  if (!/^magnet:\?/i.test(value) && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(value)) return
+  event.preventDefault()
 
   try {
     const result = await bridge.addText(value)
     if (result?.ok) {
-      els.magnet.value = ''
       toast('Torrent added.')
     } else {
       toast(result?.error || 'Could not add this torrent.', true)
@@ -660,6 +686,7 @@ function escapeHtml (value) {
 }
 
 function toast (message, isError = false) {
+  if (isError) playSound('error')
   els.toast.textContent = message
   els.toast.classList.toggle('toast--error', Boolean(isError))
   els.toast.hidden = false

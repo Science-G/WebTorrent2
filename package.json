@@ -1,7 +1,7 @@
 {
   "name": "webtorrent2",
   "productName": "WebTorrent 2",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "WebTorrent2: the WebTorrent desktop experience on macOS, refreshed. Download and seed without opening router ports, thanks to WebRTC.",
   "license": "MIT",
   "author": "WebTorrent2 contributors",

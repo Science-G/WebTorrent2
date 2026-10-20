@@ -2,12 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' webtorrent2:; media-src webtorrent2:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' webtorrent2:; media-src 'self' webtorrent2:; connect-src 'none'; form-action 'none'; base-uri 'none'">
     <title>WebTorrent 2</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <header class="titlebar">
+    <div class="window-drag-region" aria-hidden="true"></div>
+
+    <main class="content">
+      <div class="list-header">
+        <span id="list-count">No torrents</span>
+      </div>
+
+      <ul id="torrent-list" class="torrent-list"></ul>
+
+      <div id="empty-state" class="empty">
+        <p>Nothing here yet.</p>
+        <p class="muted">Drop a .torrent file anywhere in this window, paste a magnet link, or double-click a .torrent in Finder.</p>
+      </div>
+    </main>
+
+    <footer class="bottom-bar" aria-label="Torrent controls">
       <div class="brand">
         <img class="logo" src="logo.svg" alt="" aria-hidden="true">
         <div class="brand-text">
@@ -25,34 +40,15 @@
       <div class="toolbar">
         <button id="add-file" class="primary">Add Torrent</button>
         <button id="choose-folder" class="ghost" title="Change the download folder">Folder</button>
+        <button id="toggle-sounds" class="ghost sound-toggle" aria-label="Sound effects" aria-pressed="false" title="Sound effects" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M11 4 6 8H3v8h3l5 4V4Z"/>
+            <g class="sound-on"><path d="M15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14"/></g>
+            <path class="sound-off" d="m16 9 6 6m0-6-6 6"/>
+          </svg>
+        </button>
       </div>
-    </header>
-
-    <main class="content">
-      <section class="add-bar">
-        <input
-          id="magnet-input"
-          type="text"
-          placeholder="magnet:?xt=… or info hash"
-          autocomplete="off"
-          spellcheck="false"
-        >
-        <button id="paste-btn" class="ghost">Paste</button>
-        <button id="add-magnet" class="primary">Add</button>
-      </section>
-
-      <div class="list-header">
-        <span id="list-count">No torrents</span>
-        <button id="open-folder" class="link">Open folder</button>
-      </div>
-
-      <ul id="torrent-list" class="torrent-list"></ul>
-
-      <div id="empty-state" class="empty">
-        <p>Nothing here yet.</p>
-        <p class="muted">Drop a .torrent file anywhere in this window, paste a magnet link, or double-click a .torrent in Finder.</p>
-      </div>
-    </main>
+    </footer>
 
     <div id="modal" class="modal" hidden>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
