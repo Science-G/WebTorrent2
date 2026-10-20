@@ -6,7 +6,6 @@ import {
   ipcMain,
   dialog,
   shell,
-  clipboard,
   nativeImage,
   protocol,
   session
@@ -34,7 +33,6 @@ const isMac = process.platform === 'darwin'
 
 // Check launch used by the build: throwaway profile, then exit.
 const smokeTest = process.argv.includes('--smoke-test')
-const smokeVideo = process.argv.find((arg) => arg.startsWith('--smoke-video='))?.slice('--smoke-video='.length)
 
 app.setName('WebTorrent 2')
 if (smokeTest) {
@@ -550,13 +548,6 @@ function registerIpc () {
     pushUpdate()
     return { ok: true, downloadPath: config.downloadPath }
   })
-
-  handle('settings:open-folder', async () => {
-    const error = await shell.openPath(config.downloadPath)
-    return error ? { ok: false, error } : { ok: true }
-  })
-
-  handle('clipboard:read', () => clipboard.readText())
 }
 
 function looksLikeTorrentId (value) {
@@ -1018,8 +1009,7 @@ function runSmokeTest () {
 
       // Full poster path on a real video: protocol, range requests, frame
       // capture in the window, IPC, file on disk.
-      let poster = 'skipped'
-      if (smokeVideo) poster = await smokePoster(smokeVideo)
+      const poster = await smokePoster()
 
       clearTimeout(timer)
       console.log(`SMOKE OK webrtc=${WEBRTC_SUPPORT} poster=${poster} sounds=${soundAssets} electron=${process.versions.electron}`)
@@ -1077,10 +1067,11 @@ async function smokeSounds () {
   return count
 }
 
-async function smokePoster (videoPath) {
+async function smokePoster () {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'webtorrent2-smoke-media-'))
-  const copy = path.join(dir, path.basename(videoPath))
-  fs.copyFileSync(videoPath, copy)
+  const copy = path.join(dir, 'test-video.webm')
+  const bytes = await mainWindow.webContents.executeJavaScript(`(${recordSmokeVideo.toString()})()`)
+  fs.writeFileSync(copy, Buffer.from(bytes))
 
   const seeded = await new Promise((resolve) => client.seed(copy, { announce: [] }, resolve))
   const torrentFile = Buffer.from(seeded.torrentFile)
@@ -1100,6 +1091,59 @@ async function smokePoster (videoPath) {
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
   throw new Error('poster not captured within 60 s')
+}
+
+// Runs in the renderer only during the check launch. Generate the test video
+// with Chromium's encoder instead of keeping a binary fixture in the repository.
+async function recordSmokeVideo () {
+  const canvas = document.createElement('canvas')
+  canvas.width = 320
+  canvas.height = 180
+  const context = canvas.getContext('2d')
+  const stream = canvas.captureStream(10)
+  const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' })
+  const chunks = []
+  recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data) }
+  const stopped = new Promise((resolve, reject) => {
+    recorder.onstop = resolve
+    recorder.onerror = reject
+  })
+  let frame = 0
+  const draw = () => {
+    for (let x = 0; x < 8; x++) {
+      context.fillStyle = 'hsl(' + (x * 45 + frame * 5) + ' 75% 50%)'
+      context.fillRect(x * 40, 0, 40, 180)
+    }
+    frame++
+  }
+  draw()
+  recorder.start()
+  const timer = setInterval(draw, 100)
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1200))
+    recorder.stop()
+    await stopped
+  } finally {
+    clearInterval(timer)
+    stream.getTracks().forEach(track => track.stop())
+  }
+  const video = new Uint8Array(await new Blob(chunks).arrayBuffer())
+
+  // Chromium's streaming WebM omits duration. Add Info/Duration so the poster
+  // check can seek to known frame positions without relying on an end scan.
+  const info = video.findIndex((_, i) => video[i] === 0x15 && video[i + 1] === 0x49 && video[i + 2] === 0xa9 && video[i + 3] === 0x66)
+  const size = video[info + 4]
+  if (info < 0 || !(size & 0x80) || (size & 0x7f) + 11 >= 127) throw new Error('Unexpected WebM Info header')
+  const end = info + 5 + (size & 0x7f)
+  const duration = new Uint8Array(11)
+  duration.set([0x44, 0x89, 0x88])
+  new DataView(duration.buffer).setFloat64(3, 1200)
+  const output = new Uint8Array(video.length + duration.length)
+  output.set(video.subarray(0, end))
+  output.set(duration, end)
+  output.set(video.subarray(end), end + duration.length)
+  output[info + 4] += duration.length
+  return Array.from(output)
 }
 
 async function smokeSoundActions (entry, torrentFile, dir) {

@@ -8,7 +8,6 @@
   --text: #e9eef7;
   --muted: #8b95a7;
   --accent: #5eead4;
-  --accent-strong: #2dd4bf;
   --blue: #60a5fa;
   --green: #4ade80;
   --amber: #fbbf24;
@@ -40,13 +39,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-button,
-input {
+button {
   font: inherit;
   color: inherit;
-}
-
-button {
   cursor: pointer;
 }
 
@@ -155,8 +150,7 @@ button:disabled {
 
 button.primary,
 button.ghost,
-button.danger,
-button.link {
+button.danger {
   border-radius: 8px;
   transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
 }
@@ -197,18 +191,6 @@ button.danger {
 
 button.danger:hover {
   background: rgba(248, 113, 113, 0.2);
-}
-
-button.link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font-size: 12px;
-}
-
-button.link:hover {
-  text-decoration: underline;
 }
 
 .content {

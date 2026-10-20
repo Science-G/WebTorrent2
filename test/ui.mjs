@@ -92,8 +92,6 @@ window.api = {
   posterFailed: async (id) => { calls.push(['posterFailed', id]); return { ok: true } },
   pickFiles: async () => ({ ok: true, added: 0 }),
   chooseDownload: async () => ({ ok: false }),
-  openFolder: async () => ({ ok: true }),
-  readClipboard: async () => 'magnet:?xt=urn:btih:deadbeef',
   pathForFile: () => null
 }
 

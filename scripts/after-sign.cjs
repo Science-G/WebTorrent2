@@ -1,7 +1,7 @@
 // Checks the macOS package right after the ad hoc signature, on the runner:
 // 1. the signature covers the whole bundle (otherwise macOS says "damaged");
 // 2. the app really starts (--smoke-test: bridge, page, WebRTC, engine), builds
-//    a card poster from a real video (--smoke-video) and quits cleanly.
+//    a card poster from a generated video and quits cleanly.
 // Any failure stops the build: no release ships with an app that does not start.
 'use strict'
 
@@ -43,11 +43,10 @@ exports.default = async function afterSign (context) {
   const name = context.packager.appInfo.productFilename
   const appPath = path.join(context.appOutDir, `${name}.app`)
   const binary = path.join(appPath, 'Contents', 'MacOS', name)
-  const video = path.join(__dirname, '..', 'test', 'fixtures', 'sample.webm')
 
   execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath], { stdio: 'inherit' })
 
-  const result = await runCheck(binary, ['--smoke-test', `--smoke-video=${video}`])
+  const result = await runCheck(binary, ['--smoke-test'])
   if (result.code !== 0 || !result.output.includes('SMOKE OK')) {
     throw new Error(`check launch failed (code ${result.code}, signal ${result.signal})`)
   }

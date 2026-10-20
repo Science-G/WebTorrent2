@@ -147,6 +147,10 @@ Verifying files already on disk, generating a poster and reopening the window
 must stay silent. Interface tests cover volume levels, stopping sounds on mute,
 restoring the saved preference and rejecting unknown sound names.
 
+The video used by the package check is generated locally by Chromium during the
+check launch. It is not a stored fixture or an external download. Node stream
+tests reuse the app's existing icon and sound assets.
+
 ## Checked and found sound
 
 - **HTML injection**: names and errors go through `escapeHtml`, strict CSP, no `eval`.

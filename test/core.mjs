@@ -20,9 +20,13 @@ const sourcePath = path.join(seedDir, 'payload.bin')
 const payload = crypto.randomBytes(1024 * 1024 + 12345)
 await fsp.writeFile(sourcePath, payload)
 
-const videoPath = path.join(seedDir, 'sample.webm')
-await fsp.copyFile(new URL('./fixtures/sample.webm', import.meta.url), videoPath)
-const video = await fsp.readFile(videoPath)
+// Reuse required app assets instead of storing separate test media.
+const imagePath = path.join(seedDir, 'cover.png')
+await fsp.copyFile(new URL('../build/icons/icon-256.png', import.meta.url), imagePath)
+const image = await fsp.readFile(imagePath)
+const audioPath = path.join(seedDir, 'play.wav')
+await fsp.copyFile(new URL('../src/renderer/sounds/play.wav', import.meta.url), audioPath)
+const audio = await fsp.readFile(audioPath)
 
 const clientA = new WebTorrent({ dht: false, tracker: false, lsd: false, utp: false, webSeeds: false })
 const clientB = new WebTorrent({ dht: false, tracker: false, lsd: false, utp: false, webSeeds: false })
@@ -89,10 +93,10 @@ try {
   console.log('byte ranges: ok')
 
   received.pause()
-  assert.equal(received.paused, true, 'pause active')
+  assert.equal(received.paused, true, 'pause sets the connection flag')
   received.resume()
   assert.equal(received.paused, false, 'resume clears the pause')
-  console.log('pause and resume: ok')
+  console.log('pause and resume flags (not transfer suspension): ok')
 
   await new Promise((resolve, reject) => {
     clientB.remove(received, { destroyStore: false }, (err) => err ? reject(err) : resolve())
@@ -105,11 +109,15 @@ try {
   await new Promise((resolve) => pausedAdd.destroy(resolve))
   console.log('add paused: ok')
 
-  // Card preview and VLC stream on a real video.
-  const clip = await new Promise((resolve) => clientA.seed(videoPath, { announce: [] }, resolve))
-  assert.deepEqual(pickPreviewSource(clip.files), { kind: 'video', index: 0 }, 'video chosen for the poster')
-  assert.equal(playableFileIndex(clip.files), 0, 'video playable in VLC')
-  const findFile = (infoHash, index) => (infoHash === clip.infoHash ? clip.files[index] || null : null)
+  // Real image bytes through the private protocol, real audio bytes for VLC.
+  // The Mac check launch covers video decoding with a generated clip.
+  const artwork = await new Promise((resolve) => clientA.seed(imagePath, { announce: [] }, resolve))
+  const clip = await new Promise((resolve) => clientA.seed(audioPath, { announce: [] }, resolve))
+  assert.deepEqual(pickPreviewSource(artwork.files), { kind: 'image', index: 0 }, 'cover chosen for the poster')
+  assert.equal(pickPreviewSource(clip.files), null, 'audio without artwork has no image preview')
+  assert.equal(playableFileIndex(clip.files), 0, 'audio playable in VLC')
+  const mediaTorrents = new Map([artwork, clip].map(torrent => [torrent.infoHash, torrent]))
+  const findFile = (infoHash, index) => mediaTorrents.get(infoHash)?.files[index] || null
 
   const posterPath = path.join(root, 'poster.jpg')
   const jpeg = Uint8Array.from([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3])
@@ -118,21 +126,21 @@ try {
   assert.equal(isJpeg(Uint8Array.from([0x89, 0x50, 0x4E, 0x47])), false, 'a PNG is not taken for a JPEG')
 
   const handler = mediaRequestHandler({ findFile, posterFile: () => posterPath })
-  const media = `webtorrent2://media/${clip.infoHash}/0`
+  const media = `webtorrent2://media/${artwork.infoHash}/0`
   const partial = await handler(new Request(media, { headers: { Range: 'bytes=100-1099' } }))
   assert.equal(partial.status, 206)
-  assert.equal(partial.headers.get('Content-Range'), `bytes 100-1099/${video.length}`)
-  assert.equal(partial.headers.get('Content-Type'), 'video/webm')
+  assert.equal(partial.headers.get('Content-Range'), `bytes 100-1099/${image.length}`)
+  assert.equal(partial.headers.get('Content-Type'), 'image/png')
   assert.equal(partial.headers.get('Access-Control-Allow-Origin'), '*', 'CORS so the frame capture is not tainted')
-  assert.ok(Buffer.from(await partial.arrayBuffer()).equals(video.subarray(100, 1100)), 'exact bytes served')
+  assert.ok(Buffer.from(await partial.arrayBuffer()).equals(image.subarray(100, 1100)), 'exact bytes served')
   const whole = await handler(new Request(media))
   assert.equal(whole.status, 200)
-  assert.equal(Buffer.from(await whole.arrayBuffer()).length, video.length)
-  assert.equal((await handler(new Request(media, { headers: { Range: `bytes=${video.length}-` } }))).status, 416)
-  assert.equal((await handler(new Request(`webtorrent2://media/${clip.infoHash}/1`))).status, 404, 'unknown file')
+  assert.equal(Buffer.from(await whole.arrayBuffer()).length, image.length)
+  assert.equal((await handler(new Request(media, { headers: { Range: `bytes=${image.length}-` } }))).status, 416)
+  assert.equal((await handler(new Request(`webtorrent2://media/${artwork.infoHash}/1`))).status, 404, 'unknown file')
   assert.equal((await handler(new Request(`webtorrent2://media/${'0'.repeat(40)}/0`))).status, 404, 'unknown torrent')
   assert.equal((await handler(new Request('webtorrent2://media/../../etc/passwd'))).status, 404, 'no path access')
-  const poster = await handler(new Request(`webtorrent2://poster/${clip.infoHash}?v=1`))
+  const poster = await handler(new Request(`webtorrent2://poster/${artwork.infoHash}?v=1`))
   assert.ok(Buffer.from(await poster.arrayBuffer()).equals(Buffer.from(jpeg)), 'cached poster served')
   console.log('private media protocol: ok')
 
@@ -142,7 +150,7 @@ try {
   assert.equal(url.hostname, '127.0.0.1', 'local only')
   const ok = await request(url, { Range: 'bytes=0-499' })
   assert.equal(ok.status, 206)
-  assert.ok(ok.body.equals(video.subarray(0, 500)), 'VLC gets the exact bytes')
+  assert.ok(ok.body.equals(audio.subarray(0, 500)), 'VLC gets the exact bytes')
 
   const wrongToken = new URL(streamUrl)
   wrongToken.pathname = wrongToken.pathname.replace(/^\/[a-f0-9]+/, '/' + 'f'.repeat(48))

@@ -21,8 +21,6 @@ contextBridge.exposeInMainWorld('api', {
   setSounds: (enabled) => ipcRenderer.invoke('settings:set-sounds', enabled),
   soundsReady: () => ipcRenderer.invoke('sounds:ready'),
   chooseDownload: () => ipcRenderer.invoke('settings:choose-download'),
-  openFolder: () => ipcRenderer.invoke('settings:open-folder'),
-  readClipboard: () => ipcRenderer.invoke('clipboard:read'),
   pathForFile: (file) => webUtils.getPathForFile(file),
   onUpdate: (callback) => {
     const handler = (_event, list) => callback(list)
