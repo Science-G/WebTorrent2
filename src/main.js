@@ -1100,7 +1100,8 @@ async function recordSmokeVideo () {
   canvas.width = 320
   canvas.height = 180
   const context = canvas.getContext('2d')
-  const stream = canvas.captureStream(10)
+  const stream = canvas.captureStream(0)
+  const track = stream.getVideoTracks()[0]
   const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' })
   const chunks = []
   recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data) }
@@ -1115,6 +1116,7 @@ async function recordSmokeVideo () {
       context.fillRect(x * 40, 0, 40, 180)
     }
     frame++
+    track.requestFrame()
   }
   draw()
   recorder.start()
@@ -1132,9 +1134,16 @@ async function recordSmokeVideo () {
   // Chromium's streaming WebM omits duration. Add Info/Duration so the poster
   // check can seek to known frame positions without relying on an end scan.
   const info = video.findIndex((_, i) => video[i] === 0x15 && video[i + 1] === 0x49 && video[i + 2] === 0xa9 && video[i + 3] === 0x66)
-  const size = video[info + 4]
-  if (info < 0 || !(size & 0x80) || (size & 0x7f) + 11 >= 127) throw new Error('Unexpected WebM Info header')
-  const end = info + 5 + (size & 0x7f)
+  if (info < 0) throw new Error('Recorded WebM has no Info element (' + video.length + ' bytes)')
+  let sizeBytes = 1
+  while (sizeBytes <= 8 && !(video[info + 4] & (1 << (8 - sizeBytes)))) sizeBytes++
+  if (sizeBytes > 8) throw new Error('Invalid WebM Info size')
+  let size = video[info + 4] & (0xff >> sizeBytes)
+  for (let i = 1; i < sizeBytes; i++) size = size * 256 + video[info + 4 + i]
+  const end = info + 4 + sizeBytes + size
+  if (!Number.isSafeInteger(size) || end > video.length || size + 11 >= 2 ** (7 * sizeBytes) - 1) {
+    throw new Error('Invalid WebM Info bounds (' + sizeBytes + ' size bytes, ' + size + ' content bytes)')
+  }
   const duration = new Uint8Array(11)
   duration.set([0x44, 0x89, 0x88])
   new DataView(duration.buffer).setFloat64(3, 1200)
@@ -1142,7 +1151,12 @@ async function recordSmokeVideo () {
   output.set(video.subarray(0, end))
   output.set(duration, end)
   output.set(video.subarray(end), end + duration.length)
-  output[info + 4] += duration.length
+  let updatedSize = size + duration.length
+  for (let i = sizeBytes - 1; i >= 0; i--) {
+    output[info + 4 + i] = updatedSize % 256
+    updatedSize = Math.floor(updatedSize / 256)
+  }
+  output[info + 4] |= 1 << (8 - sizeBytes)
   return Array.from(output)
 }
 
