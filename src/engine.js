@@ -1,5 +1,6 @@
 import WebTorrent from 'webtorrent'
 import { peerBlocklist } from './security.js'
+import { recoverInitialDiscovery } from './discovery.js'
 
 // WebSocket trackers: this is how two WebRTC peers find each other and swap
 // their connection offers. Added to every public torrent (WebTorrent skips them
@@ -29,6 +30,7 @@ export function createEngine () {
   // Checked before any connection: WebTorrent consults client.blocked before
   // adding a TCP/uTP peer and on every incoming connection.
   client.blocked = peerBlocklist
+  client.on('add', (torrent) => recoverInitialDiscovery(torrent))
   return client
 }
 

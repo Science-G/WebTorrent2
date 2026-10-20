@@ -152,6 +152,17 @@ name cannot inject a command.
 | R-05 | Previews fetch pieces early | Building a poster or a hover preview reads parts of the video out of order, as WebTorrent Desktop did. Nothing is sent to anyone because of it. |
 | R-06 | `npmRebuild: false` | `node-datachannel` uses N-API, compatible with the Electron runtime. |
 
+## Initial discovery recovery
+
+If initial tracker announces fail, the app makes up to four recovery announces
+after 15, 30, 60 and 120 seconds. Recovery stops as soon as a tracker responds
+(including an empty swarm) or a peer connects, so the tracker's normal interval
+is respected after a response. Paused torrents send no recovery requests, and
+closing a torrent cancels recovery. The existing tracker list and private flag
+are preserved. `test/discovery.mjs`, run by `test/core.mjs`, checks recovery with
+a real tracker that is temporarily unavailable, verifies the restored seed's
+upload, and covers pause, shutdown and the retry limit.
+
 ## Re-running the audit
 
 ```bash

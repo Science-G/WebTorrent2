@@ -9,6 +9,7 @@ import WebTorrent from 'webtorrent'
 import parseTorrent from 'parse-torrent'
 import { isJpeg, parseRange, pickPreviewSource, playableFileIndex, readRange } from '../src/media.js'
 import { createStreamServer, mediaRequestHandler } from '../src/streaming.js'
+import { testDiscoveryRecovery } from './discovery.mjs'
 
 const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'webtorrent2-test-'))
 const seedDir = path.join(root, 'seed')
@@ -152,13 +153,15 @@ try {
   assert.equal((await request(url, {}, 'POST')).status, 405, 'only GET and HEAD')
   console.log('VLC stream server: ok')
 
-  console.log('ALL ENGINE TESTS PASSED')
 } finally {
   streams?.close()
   await new Promise((resolve) => clientA.destroy(resolve))
   await new Promise((resolve) => clientB.destroy(resolve))
   await fsp.rm(root, { recursive: true, force: true })
 }
+
+await testDiscoveryRecovery()
+console.log('ALL ENGINE TESTS PASSED')
 
 function request (url, headers = {}, method = 'GET') {
   return new Promise((resolve, reject) => {
